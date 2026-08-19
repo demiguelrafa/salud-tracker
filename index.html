@@ -25,8 +25,17 @@
   nav.tabs button { border:none; background:none; padding:10px 14px; font-size:14px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
   nav.tabs button.active { color:var(--accent-dark); border-bottom-color:var(--accent); }
   .tab-panel { display:none; } .tab-panel.active { display:block; }
-  .grid { display:grid; gap:14px; } .grid.cols-4 { grid-template-columns:repeat(4,1fr); } .grid.cols-2 { grid-template-columns:repeat(2,1fr); }
+  .grid { display:grid; gap:14px; } .grid.cols-4 { grid-template-columns:repeat(4,1fr); } .grid.cols-2 { grid-template-columns:repeat(2,1fr); } .grid.cols-3 { grid-template-columns:repeat(3,1fr); }
   @media (max-width:720px) { .grid.cols-4 { grid-template-columns:repeat(2,1fr); } .grid.cols-2 { grid-template-columns:1fr; } }
+  @media (max-width:900px) { .grid.cols-3 { grid-template-columns:1fr; } }
+  .plan-day-card h4 { margin:0 0 2px; font-size:14px; }
+  .plan-day-card .rpe-tag { font-size:11px; color:var(--accent-dark); font-weight:600; margin-bottom:10px; display:inline-block; background:var(--accent-soft); padding:2px 8px; border-radius:999px; }
+  table.exercise-table { width:100%; border-collapse:collapse; font-size:12px; }
+  table.exercise-table th, table.exercise-table td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--border); }
+  table.exercise-table th { color:var(--text-muted); font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
+  table.exercise-table tr:last-child td { border-bottom:none; }
+  #planSummary p { margin:0 0 8px; font-size:13px; line-height:1.5; }
+  #planSummary p:last-child { margin-bottom:0; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
   .stat-card .label { color:var(--text-muted); font-size:12px; margin-bottom:4px; }
   .stat-card .value { font-size:24px; font-weight:700; } .stat-card .value.small { font-size:18px; }
@@ -115,6 +124,7 @@
   <nav class="tabs">
     <button data-tab="dashboard" class="active">Resumen</button>
     <button data-tab="workouts">Entrenamientos</button>
+    <button data-tab="plan">Plan</button>
     <button data-tab="nutrition">Nutrición</button>
     <button data-tab="weight">Peso</button>
     <button data-tab="sleep">Sueño</button>
@@ -173,6 +183,20 @@
     </div>
     <div class="card" style="margin-bottom:14px;"><h3>Minutos entrenados por semana</h3><div class="chart-wrap"><canvas id="chartWorkoutWeekly"></canvas></div></div>
     <div class="card"><h3 class="section-title">Registro de entrenamientos</h3><div id="workoutTableWrap"></div></div>
+  </section>
+
+  <!-- PLAN DE ENTRENAMIENTO -->
+  <section class="tab-panel" id="tab-plan">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Tu plan semanal de fuerza (3 días) — adaptado a tus datos de Garmin</h3>
+      <div id="planSummary"></div>
+      <div style="margin-top:10px;"><button class="btn secondary small" id="btnRegenPlan">↻ Regenerar con mis datos actuales</button></div>
+    </div>
+    <div class="grid cols-3" id="planDaysWrap"></div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Cómo combinarlo con tu cardio actual</h3>
+      <div id="planCardioNote" class="note-muted" style="margin-top:0;"></div>
+    </div>
   </section>
 
   <!-- NUTRITION -->
@@ -434,6 +458,123 @@
     return { labels: labels, values: values };
   }
 
+  // ---------------- Plan de entrenamiento ----------------
+  // Plantilla full-body x3 para principiante con acceso a gimnasio completo,
+  // sesiones de 45-60 min, orientada a pérdida de grasa + definición muscular.
+  var PLAN_TEMPLATE = [
+    { id:'A', title:'Día A — Piernas + empuje horizontal', exercises:[
+      { name:'Sentadilla con barra (o prensa de piernas si empiezas con la técnica)', sets:'3', reps:'10-12', rest:'90s' },
+      { name:'Press de banca con barra o mancuernas', sets:'3', reps:'8-10', rest:'90s' },
+      { name:'Remo en máquina o polea baja', sets:'3', reps:'10-12', rest:'75s' },
+      { name:'Zancadas con mancuernas', sets:'2', reps:'10-12 por pierna', rest:'75s' },
+      { name:'Plancha abdominal', sets:'3', reps:'20-30 s', rest:'45s' }
+    ]},
+    { id:'B', title:'Día B — Cadera + empuje vertical', exercises:[
+      { name:'Peso muerto rumano con barra o mancuernas', sets:'3', reps:'10-12', rest:'90s' },
+      { name:'Press militar con mancuernas', sets:'3', reps:'8-10', rest:'90s' },
+      { name:'Jalón al pecho en polea', sets:'3', reps:'10-12', rest:'75s' },
+      { name:'Elevación de cadera (hip thrust)', sets:'3', reps:'12-15', rest:'60s' },
+      { name:'Elevación de piernas o rueda abdominal', sets:'3', reps:'12-15', rest:'45s' }
+    ]},
+    { id:'C', title:'Día C — Variación + accesorios', exercises:[
+      { name:'Prensa de piernas o sentadilla búlgara', sets:'3', reps:'10-12', rest:'90s' },
+      { name:'Press inclinado con mancuernas', sets:'3', reps:'10-12', rest:'75s' },
+      { name:'Remo con mancuerna a una mano', sets:'3', reps:'10-12 por brazo', rest:'75s' },
+      { name:'Elevaciones laterales de hombro', sets:'2', reps:'12-15', rest:'45s' },
+      { name:'Superserie: curl de bíceps + fondos de tríceps en banco', sets:'2', reps:'12-15', rest:'60s' }
+    ]}
+  ];
+
+  function computePlanContext() {
+    var now = new Date(); now.setHours(0,0,0,0);
+    function cutoffDays(days) { var d = new Date(now); d.setDate(now.getDate() - days + 1); return d; }
+    var w28 = state.workouts.filter(function (w) { return new Date(w.date + 'T00:00:00') >= cutoffDays(28); });
+    var strengthLogged = w28.some(function (w) { return /fuerza|strength|gym|weight_training|pesas/i.test(w.type || ''); });
+    var cardioMinutes28 = w28.reduce(function (sum, w) { return sum + (w.duration_min || 0); }, 0);
+    var typeCounts = {};
+    w28.forEach(function (w) { var t = w.type || 'otro'; typeCounts[t] = (typeCounts[t] || 0) + 1; });
+    var topTypes = Object.keys(typeCounts).sort(function (a, b) { return typeCounts[b] - typeCounts[a]; }).slice(0, 3);
+    var avgSleep7 = avg(state.sleep, 'hours', 7);
+    var avgHrv7 = avg(state.hrv, 'value_ms', 7);
+    var avgHrv28 = avg(state.hrv, 'value_ms', 28);
+    var lowRecovery = false;
+    if (avgSleep7 != null && avgSleep7 < 6.5) lowRecovery = true;
+    if (avgHrv7 != null && avgHrv28 != null && avgHrv7 < avgHrv28 * 0.9) lowRecovery = true;
+    return {
+      sessionsPerWeek: Math.round((w28.length / 4) * 10) / 10,
+      cardioMinutesPerWeek: Math.round(cardioMinutes28 / 4),
+      strengthLogged: strengthLogged,
+      topTypes: topTypes,
+      avgSleep7: avgSleep7, avgHrv7: avgHrv7, avgHrv28: avgHrv28,
+      lowRecovery: lowRecovery,
+      hasWeightData: state.weight.length > 0,
+      hasNutritionData: state.nutrition.length > 0
+    };
+  }
+
+  var TYPE_LABELS_ES = { indoor_cycling:'bici indoor', indoor_rowing:'remo indoor', walking:'caminar', running:'correr', elliptical:'elíptica', cycling:'ciclismo', swimming:'nadar' };
+  function typeLabel(t) { return TYPE_LABELS_ES[t] || t; }
+
+  function renderPlanSummary(ctx) {
+    var html = '<p>En las últimas 4 semanas has entrenado una media de <strong>' + ctx.sessionsPerWeek + ' sesiones/semana</strong>' +
+      (ctx.cardioMinutesPerWeek ? ' (~' + ctx.cardioMinutesPerWeek + ' min/semana)' : '') +
+      (ctx.topTypes.length ? ', principalmente ' + ctx.topTypes.map(typeLabel).join(', ') : '') + '.' +
+      (ctx.strengthLogged ? '' : ' No hay entrenamiento de fuerza registrado todavía, así que empezamos desde cero con buena técnica.') + '</p>';
+    if (ctx.avgSleep7 != null || ctx.avgHrv7 != null) {
+      html += '<p>Sueño medio (7 días): <strong>' + (ctx.avgSleep7 != null ? ctx.avgSleep7.toFixed(1) + ' h' : 'sin datos') + '</strong> · HRV medio (7 días): <strong>' + (ctx.avgHrv7 != null ? Math.round(ctx.avgHrv7) + ' ms' : 'sin datos') + '</strong>.</p>';
+    }
+    if (ctx.lowRecovery) {
+      html += '<p>Tu sueño y/o tu HRV están algo bajos respecto a tu línea base, así que este plan arranca en <strong>RPE 6-7</strong> (deja 3-4 repeticiones en reserva) priorizando técnica. Si notas fatiga acumulada, quita la última serie de cada ejercicio sin culpa.</p>';
+    } else {
+      html += '<p>Tu recuperación se ve estable, así que puedes trabajar en <strong>RPE 7-8</strong> (deja 1-2 repeticiones en reserva) desde la primera semana.</p>';
+    }
+    html += '<p>Progresión: cuando completes el número superior de repeticiones en las 3 series durante 2 sesiones seguidas, sube el peso un 2,5-5% la siguiente vez.</p>';
+    if (!ctx.hasWeightData || !ctx.hasNutritionData) {
+      html += '<p>Para saber si estás perdiendo grasa y ganando músculo necesitas datos que Garmin no registra: ' +
+        (!ctx.hasWeightData ? 'pésate 1-2 veces/semana en la pestaña <em>Peso</em>' : '') +
+        (!ctx.hasWeightData && !ctx.hasNutritionData ? ' y ' : '') +
+        (!ctx.hasNutritionData ? 'anota tu ingesta (sobre todo proteína) en la pestaña <em>Nutrición</em>' : '') + '.</p>';
+    }
+    document.getElementById('planSummary').innerHTML = html;
+  }
+
+  function renderPlanDays(ctx) {
+    var rpeTag = ctx.lowRecovery ? 'RPE objetivo: 6-7' : 'RPE objetivo: 7-8';
+    var wrap = document.getElementById('planDaysWrap');
+    var html = '';
+    PLAN_TEMPLATE.forEach(function (day) {
+      html += '<div class="card plan-day-card"><h4>' + day.title + '</h4><span class="rpe-tag">' + rpeTag + '</span>' +
+        '<table class="exercise-table"><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Descanso</th></tr></thead><tbody>';
+      day.exercises.forEach(function (ex) {
+        html += '<tr><td>' + ex.name + '</td><td>' + ex.sets + '</td><td>' + ex.reps + '</td><td>' + ex.rest + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    });
+    wrap.innerHTML = html;
+  }
+
+  function renderPlanCardioNote(ctx) {
+    var html = 'Actualmente entrenas cardio unas ' + ctx.sessionsPerWeek + ' veces/semana' +
+      (ctx.topTypes.length ? ' (' + ctx.topTypes.map(typeLabel).join(', ') + ')' : '') + '. ' +
+      'Coloca los 3 días de fuerza en días no consecutivos (por ejemplo lunes/miércoles/viernes). ' +
+      'Si ese mismo día quieres hacer también cardio, hazlo después de la fuerza y mantenlo suave (15-20 min) para no comprometer la recuperación ni el objetivo de definición. ' +
+      'Reserva al menos un día a la semana de descanso total o activo (paseo suave).';
+    document.getElementById('planCardioNote').textContent = html;
+  }
+
+  function renderPlanTab() {
+    var ctx = computePlanContext();
+    renderPlanSummary(ctx);
+    renderPlanDays(ctx);
+    renderPlanCardioNote(ctx);
+  }
+
+  document.getElementById('btnRegenPlan').addEventListener('click', async function () {
+    var btn = this; btn.disabled = true; btn.textContent = 'Actualizando…';
+    await loadAllData();
+    btn.disabled = false; btn.textContent = '↻ Regenerar con mis datos actuales';
+  });
+
   // ---------------- Nutrition ----------------
   document.getElementById('formNutrition').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -649,11 +790,8 @@
   }
   function renderAll() {
     renderWorkoutTable(); renderNutritionTable(); renderWeightTable(); renderSleepTable(); renderHrvTable();
-    renderDashboardStats(); renderCalendar(); renderSyncStatus();
+    renderDashboardStats(); renderCalendar(); renderSyncStatus(); renderPlanTab();
     var activeTab = document.querySelector('nav.tabs button.active').dataset.tab;
     renderChartsForTab(activeTab);
   }
 })();
-</script>
-</body>
-</html>

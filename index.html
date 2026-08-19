@@ -251,6 +251,16 @@
       </div>
       <p class="note-muted">Tus datos viven en una base de datos Supabase privada (solo tú puedes leerlos, protegido por Row Level Security) y esta página es una web estática — puedes abrirla desde el móvil, el ordenador o donde quieras.</p>
     </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>Cambiar contraseña</h3>
+      <div class="settings-row">
+        <div class="field"><label>Nueva contraseña</label><input type="password" id="newPassword" autocomplete="new-password" placeholder="mínimo 6 caracteres"></div>
+        <div class="field"><label>Repite la contraseña</label><input type="password" id="newPasswordConfirm" autocomplete="new-password"></div>
+        <div class="field"><button class="btn" id="btnChangePassword">Guardar contraseña</button></div>
+      </div>
+      <div id="passwordMsg" class="note-muted" style="margin-top:8px;"></div>
+    </div>
   </section>
 
 </div>
@@ -313,6 +323,13 @@
       document.getElementById('appScreen').style.display = 'block';
       document.getElementById('userEmail').textContent = session.user.email;
       loadAllData();
+      if (event === 'PASSWORD_RECOVERY') {
+        tabButtons.forEach(function (b) { b.classList.remove('active'); });
+        panels.forEach(function (p) { p.classList.remove('active'); });
+        document.querySelector('nav.tabs button[data-tab="settings"]').classList.add('active');
+        document.getElementById('tab-settings').classList.add('active');
+        document.getElementById('passwordMsg').textContent = 'Has entrado con un enlace de recuperación: establece tu nueva contraseña abajo.';
+      }
     } else {
       document.getElementById('authScreen').style.display = 'block';
       document.getElementById('appScreen').style.display = 'none';
@@ -526,6 +543,21 @@
     var r = await sb.from('settings').upsert({ calorie_goal: calorie_goal, sleep_goal: sleep_goal, weight_goal: weight_goal, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
     if (r.error) { alert(r.error.message); return; }
     await loadAllData();
+  });
+
+  document.getElementById('btnChangePassword').addEventListener('click', async function () {
+    var msg = document.getElementById('passwordMsg');
+    var p1 = document.getElementById('newPassword').value;
+    var p2 = document.getElementById('newPasswordConfirm').value;
+    msg.className = 'note-muted';
+    if (!p1 || p1.length < 6) { msg.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+    if (p1 !== p2) { msg.textContent = 'Las dos contraseñas no coinciden.'; return; }
+    msg.textContent = 'Guardando…';
+    var r = await sb.auth.updateUser({ password: p1 });
+    if (r.error) { msg.textContent = 'Error: ' + r.error.message; return; }
+    document.getElementById('newPassword').value = '';
+    document.getElementById('newPasswordConfirm').value = '';
+    msg.textContent = 'Contraseña actualizada. Ya puedes usarla la próxima vez que inicies sesión.';
   });
 
   // ---------------- Sync status ----------------

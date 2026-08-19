@@ -78,6 +78,17 @@
   .note-muted { color:var(--text-muted); font-size:12px; margin-top:14px; }
   .sync-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
   .sync-row:last-child { border-bottom:none; }
+  .health-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
+  .health-row:last-child { border-bottom:none; }
+  .health-row .health-label { color:var(--text-muted); }
+  .health-row .health-value { font-weight:600; text-align:right; }
+  .status-pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; margin-left:8px; white-space:nowrap; }
+  .status-pill.good { background:var(--accent-soft); color:var(--accent-dark); }
+  .status-pill.warn { background:var(--orange-soft); color:var(--orange); }
+  .status-pill.info { background:var(--blue-soft); color:var(--blue); }
+  .status-pill.muted { background:var(--bg); color:var(--text-muted); border:1px solid var(--border); }
+  #healthOverallWrap p { margin:0 0 8px; font-size:13px; line-height:1.5; }
+  #healthOverallWrap p:last-child { margin-bottom:0; }
   /* Auth screen */
   #authScreen { max-width:380px; margin:80px auto; }
   #authScreen h1 { text-align:center; font-size:22px; }
@@ -129,6 +140,7 @@
     <button data-tab="weight">Peso</button>
     <button data-tab="sleep">Sueño</button>
     <button data-tab="hrv">HRV</button>
+    <button data-tab="health">Salud</button>
     <button data-tab="settings">Ajustes</button>
   </nav>
 
@@ -267,6 +279,35 @@
     <div class="card"><h3 class="section-title">Registro de HRV</h3><div id="hrvTableWrap"></div></div>
   </section>
 
+  <!-- HEALTH SUMMARY -->
+  <section class="tab-panel" id="tab-health">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Datos personales</h3>
+      <div class="grid cols-4" id="healthPersonalWrap"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Composición corporal</h3>
+      <div id="healthBodyWrap"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Actividad física</h3>
+      <div id="healthActivityWrap"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Recuperación (sueño y HRV)</h3>
+      <div id="healthRecoveryWrap"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Nutrición</h3>
+      <div id="healthNutritionWrap"></div>
+    </div>
+    <div class="card">
+      <h3>En resumen</h3>
+      <div id="healthOverallWrap"></div>
+      <p class="note-muted">Este resumen se genera automáticamente a partir de tus propios datos registrados y de referencias generales de salud/fitness — no es un diagnóstico médico. Para una valoración clínica (analíticas, densidad ósea, etc.) consulta con un profesional sanitario.</p>
+    </div>
+  </section>
+
   <!-- SETTINGS -->
   <section class="tab-panel" id="tab-settings">
     <div class="card">
@@ -275,6 +316,7 @@
         <div class="field"><label>Objetivo calorías/día</label><input type="number" id="goalCalories" min="0" step="10"></div>
         <div class="field"><label>Objetivo sueño (h)</label><input type="number" id="goalSleep" min="0" step="0.5"></div>
         <div class="field"><label>Peso objetivo (kg)</label><input type="number" id="goalWeight" min="0" step="0.1"></div>
+        <div class="field"><label>Altura (cm)</label><input type="number" id="goalHeight" min="0" step="0.5"></div>
         <div class="field"><button class="btn" id="btnSaveGoals">Guardar objetivos</button></div>
       </div>
       <p class="note-muted">Tus datos viven en una base de datos Supabase privada (solo tú puedes leerlos, protegido por Row Level Security) y esta página es una web estática — puedes abrirla desde el móvil, el ordenador o donde quieras.</p>
@@ -299,7 +341,8 @@
   var SUPABASE_KEY = 'sb_publishable_LRuVJCSbxDGhveq68h8t2A_-3DUF-ev';
   var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  var state = { workouts: [], nutrition: [], weight: [], sleep: [], hrv: [], sync: [], settings: { calorie_goal: 2200, sleep_goal: 8, weight_goal: null } };
+  var state = { workouts: [], nutrition: [], weight: [], sleep: [], hrv: [], sync: [], settings: { calorie_goal: 2200, sleep_goal: 8, weight_goal: null, height_cm: null } };
+  var BIRTH_DATE = '1980-07-27';
 
   function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
   function fmtDate(iso) { var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
@@ -400,6 +443,7 @@
     document.getElementById('goalCalories').value = state.settings.calorie_goal || '';
     document.getElementById('goalSleep').value = state.settings.sleep_goal || '';
     document.getElementById('goalWeight').value = state.settings.weight_goal || '';
+    document.getElementById('goalHeight').value = state.settings.height_cm || '';
     renderAll();
   }
 
@@ -694,7 +738,9 @@
     var sleep_goal = Number(document.getElementById('goalSleep').value) || 8;
     var wg = document.getElementById('goalWeight').value;
     var weight_goal = wg ? Number(wg) : null;
-    var r = await sb.from('settings').upsert({ calorie_goal: calorie_goal, sleep_goal: sleep_goal, weight_goal: weight_goal, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    var hg = document.getElementById('goalHeight').value;
+    var height_cm = hg ? Number(hg) : null;
+    var r = await sb.from('settings').upsert({ calorie_goal: calorie_goal, sleep_goal: sleep_goal, weight_goal: weight_goal, height_cm: height_cm, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
     if (r.error) { alert(r.error.message); return; }
     await loadAllData();
   });
@@ -760,6 +806,169 @@
       btn.textContent = '⟳ Sincronizar con Garmin ahora';
     }
   });
+
+  // ---------------- Resumen de salud ----------------
+  function computeHealthContext() {
+    var now = new Date(); now.setHours(0,0,0,0);
+    function cutoffDays(days) { var d = new Date(now); d.setDate(now.getDate() - days + 1); return d; }
+
+    var birth = new Date(BIRTH_DATE + 'T00:00:00');
+    var age = now.getFullYear() - birth.getFullYear();
+    var hadBirthdayThisYear = (now.getMonth() > birth.getMonth()) || (now.getMonth() === birth.getMonth() && now.getDate() >= birth.getDate());
+    if (!hadBirthdayThisYear) age--;
+
+    var wSorted = sortByDateAsc(state.weight);
+    var lastWeight = wSorted.length ? wSorted[wSorted.length - 1] : null;
+    var weightRef = null;
+    for (var i = 0; i < wSorted.length; i++) {
+      if (new Date(wSorted[i].date + 'T00:00:00') <= cutoffDays(21)) weightRef = wSorted[i];
+    }
+    var weightTrendKg = (lastWeight && weightRef && lastWeight.id !== weightRef.id) ? Math.round((lastWeight.weight_kg - weightRef.weight_kg) * 10) / 10 : null;
+
+    var bodyFatRows = wSorted.filter(function (r) { return r.body_fat_pct != null; });
+    var lastBodyFat = bodyFatRows.length ? bodyFatRows[bodyFatRows.length - 1].body_fat_pct : null;
+    var muscleRows = wSorted.filter(function (r) { return r.muscle_mass_kg != null; });
+    var lastMuscle = muscleRows.length ? muscleRows[muscleRows.length - 1].muscle_mass_kg : null;
+
+    var heightCm = state.settings.height_cm || null;
+    var heightM = heightCm ? heightCm / 100 : null;
+    var bmi = (heightM && lastWeight) ? Math.round((lastWeight.weight_kg / (heightM * heightM)) * 10) / 10 : null;
+
+    var w28 = state.workouts.filter(function (w) { return new Date(w.date + 'T00:00:00') >= cutoffDays(28); });
+    var sessionsPerWeek = Math.round((w28.length / 4) * 10) / 10;
+    var cardioMinutesPerWeek = Math.round(w28.reduce(function (s, w) { return s + (w.duration_min || 0); }, 0) / 4);
+    var strengthSessions28 = w28.filter(function (w) { return /fuerza|strength|gym|weight_training|pesas/i.test(w.type || ''); }).length;
+
+    var avgSleep7 = avg(state.sleep, 'hours', 7);
+    var avgHrv7 = avg(state.hrv, 'value_ms', 7);
+    var avgHrv28 = avg(state.hrv, 'value_ms', 28);
+
+    var avgCal7 = avg(state.nutrition, 'calories', 7);
+    var avgProtein7 = avg(state.nutrition, 'protein_g', 7);
+    var proteinTargetLow = lastWeight ? Math.round(lastWeight.weight_kg * 1.6) : null;
+    var proteinTargetHigh = lastWeight ? Math.round(lastWeight.weight_kg * 2.0) : null;
+
+    return {
+      age: age,
+      lastWeight: lastWeight, weightTrendKg: weightTrendKg,
+      lastBodyFat: lastBodyFat, lastMuscle: lastMuscle,
+      heightCm: heightCm, bmi: bmi,
+      sessionsPerWeek: sessionsPerWeek, cardioMinutesPerWeek: cardioMinutesPerWeek, strengthSessions28: strengthSessions28,
+      streak: computeStreak(),
+      avgSleep7: avgSleep7, avgHrv7: avgHrv7, avgHrv28: avgHrv28,
+      avgCal7: avgCal7, avgProtein7: avgProtein7, proteinTargetLow: proteinTargetLow, proteinTargetHigh: proteinTargetHigh,
+      weightGoal: state.settings.weight_goal, calorieGoal: state.settings.calorie_goal, sleepGoal: state.settings.sleep_goal,
+      hasWeightData: state.weight.length > 0, hasNutritionData: state.nutrition.length > 0,
+      hasHrvData: state.hrv.length > 0, hasSleepData: state.sleep.length > 0
+    };
+  }
+
+  function bmiLabel(bmi) {
+    if (bmi < 18.5) return 'Bajo peso';
+    if (bmi < 25) return 'Normal';
+    if (bmi < 30) return 'Sobrepeso';
+    return 'Obesidad';
+  }
+  function statBlock(label, value, sub) {
+    return '<div class="card stat-card"><div class="label">' + label + '</div><div class="value small">' + value + '</div><div class="delta flat">' + (sub || '') + '</div></div>';
+  }
+  function healthRow(label, value, sub) {
+    return '<div class="health-row"><span class="health-label">' + label + '</span><span class="health-value">' + value + (sub ? ' ' + sub : '') + '</span></div>';
+  }
+
+  function renderHealthPersonal(ctx) {
+    var html = '';
+    html += statBlock('Edad', ctx.age + ' años', 'Nacimiento: 27/07/1980');
+    html += statBlock('Altura', ctx.heightCm ? ctx.heightCm + ' cm' : '—', ctx.heightCm ? '' : 'Añádela en Ajustes');
+    html += statBlock('IMC', ctx.bmi != null ? ctx.bmi : '—', ctx.bmi != null ? bmiLabel(ctx.bmi) : (ctx.heightCm ? 'Sin peso registrado' : 'Añade tu altura en Ajustes'));
+    html += statBlock('Racha de registro', ctx.streak + (ctx.streak === 1 ? ' día' : ' días'), ctx.streak > 0 ? '¡Sigue así!' : 'Registra algo hoy');
+    document.getElementById('healthPersonalWrap').innerHTML = html;
+  }
+
+  function renderHealthBody(ctx) {
+    var wrap = document.getElementById('healthBodyWrap');
+    if (!ctx.hasWeightData) { wrap.innerHTML = '<div class="empty-state">Todavía no hay datos de peso. Pésate y sincroniza con Garmin (o añádelo manualmente en la pestaña Peso) para ver aquí tu evolución.</div>'; return; }
+    var html = '';
+    html += healthRow('Peso actual', ctx.lastWeight.weight_kg + ' kg', '<span class="note-muted" style="margin:0;">' + fmtDate(ctx.lastWeight.date) + '</span>');
+    if (ctx.weightTrendKg != null) {
+      var dir = ctx.weightTrendKg < 0 ? 'bajando' : (ctx.weightTrendKg > 0 ? 'subiendo' : 'estable');
+      var pillClass = ctx.weightTrendKg < 0 ? 'good' : (ctx.weightTrendKg > 0 ? 'warn' : 'info');
+      html += healthRow('Tendencia (~3 semanas)', (ctx.weightTrendKg > 0 ? '+' : '') + ctx.weightTrendKg + ' kg', '<span class="status-pill ' + pillClass + '">' + dir + '</span>');
+    }
+    if (ctx.weightGoal) {
+      var remaining = Math.round((ctx.lastWeight.weight_kg - ctx.weightGoal) * 10) / 10;
+      html += healthRow('Objetivo de peso', ctx.weightGoal + ' kg', remaining > 0 ? ('<span class="note-muted" style="margin:0;">Quedan ' + remaining + ' kg</span>') : (remaining < 0 ? ('<span class="note-muted" style="margin:0;">Ya por debajo por ' + Math.abs(remaining) + ' kg</span>') : '<span class="status-pill good">¡Objetivo alcanzado!</span>'));
+    }
+    if (ctx.lastBodyFat != null) html += healthRow('% Grasa corporal', ctx.lastBodyFat + ' %', '');
+    if (ctx.lastMuscle != null) html += healthRow('Masa muscular', ctx.lastMuscle + ' kg', '');
+    wrap.innerHTML = html;
+  }
+
+  function renderHealthActivity(ctx) {
+    var wrap = document.getElementById('healthActivityWrap');
+    var html = '';
+    html += healthRow('Sesiones/semana (últimas 4 sem.)', ctx.sessionsPerWeek, ctx.sessionsPerWeek >= 3 ? '<span class="status-pill good">en línea con tu plan</span>' : '<span class="status-pill warn">por debajo de 3 sesiones/semana</span>');
+    html += healthRow('Minutos de cardio/semana', ctx.cardioMinutesPerWeek + ' min', '');
+    html += healthRow('Sesiones de fuerza (28 días)', ctx.strengthSessions28, ctx.strengthSessions28 >= 8 ? '<span class="status-pill good">buen volumen</span>' : '<span class="status-pill info">margen de mejora</span>');
+    wrap.innerHTML = html;
+  }
+
+  function renderHealthRecovery(ctx) {
+    var wrap = document.getElementById('healthRecoveryWrap');
+    if (!ctx.hasSleepData && !ctx.hasHrvData) { wrap.innerHTML = '<div class="empty-state">Todavía no hay datos de sueño ni HRV.</div>'; return; }
+    var html = '';
+    if (ctx.avgSleep7 != null) {
+      var sleepOk = ctx.avgSleep7 >= (ctx.sleepGoal || 7);
+      html += healthRow('Sueño medio (7 días)', ctx.avgSleep7.toFixed(1) + ' h', sleepOk ? '<span class="status-pill good">cumples tu objetivo</span>' : '<span class="status-pill warn">por debajo de tu objetivo</span>');
+    }
+    if (ctx.avgHrv7 != null && ctx.avgHrv28 != null) {
+      var hrvRatio = ctx.avgHrv7 / ctx.avgHrv28;
+      var hrvPill = hrvRatio < 0.9 ? '<span class="status-pill warn">bajo respecto a tu línea base</span>' : (hrvRatio > 1.05 ? '<span class="status-pill good">por encima de tu línea base</span>' : '<span class="status-pill info">estable</span>');
+      html += healthRow('HRV (7 días vs 28 días)', Math.round(ctx.avgHrv7) + ' ms', hrvPill);
+    }
+    wrap.innerHTML = html;
+  }
+
+  function renderHealthNutrition(ctx) {
+    var wrap = document.getElementById('healthNutritionWrap');
+    if (!ctx.hasNutritionData) { wrap.innerHTML = '<div class="empty-state">Todavía no hay registros de nutrición. Anota tu ingesta en la pestaña Nutrición para ver aquí tu adherencia.</div>'; return; }
+    var html = '';
+    if (ctx.avgCal7 != null) {
+      var calOk = Math.abs(ctx.avgCal7 - ctx.calorieGoal) <= ctx.calorieGoal * 0.1;
+      html += healthRow('Calorías medias (7 días)', Math.round(ctx.avgCal7) + ' kcal', calOk ? '<span class="status-pill good">cerca de tu objetivo</span>' : '<span class="status-pill info">objetivo: ' + ctx.calorieGoal + ' kcal</span>');
+    }
+    if (ctx.avgProtein7 != null && ctx.proteinTargetLow) {
+      var proteinOk = ctx.avgProtein7 >= ctx.proteinTargetLow;
+      html += healthRow('Proteína media (7 días)', Math.round(ctx.avgProtein7) + ' g', proteinOk ? '<span class="status-pill good">dentro de tu rango recomendado</span>' : '<span class="status-pill warn">por debajo de ' + ctx.proteinTargetLow + '-' + ctx.proteinTargetHigh + ' g recomendados</span>');
+    } else if (ctx.proteinTargetLow) {
+      html += healthRow('Proteína recomendada', ctx.proteinTargetLow + '-' + ctx.proteinTargetHigh + ' g/día', '<span class="note-muted" style="margin:0;">según tu peso actual, para preservar músculo mientras pierdes grasa</span>');
+    }
+    wrap.innerHTML = html;
+  }
+
+  function renderHealthOverall(ctx) {
+    var html = '<p>Tienes <strong>' + ctx.age + ' años</strong>' + (ctx.bmi != null ? ' y un IMC de <strong>' + ctx.bmi + '</strong> (' + bmiLabel(ctx.bmi) + ')' : '') + '. Tu objetivo actual es perder peso manteniendo el músculo, para pasar después a una fase de definición.</p>';
+
+    var parts = [];
+    if (ctx.weightTrendKg != null) parts.push(ctx.weightTrendKg < 0 ? 'tu peso está bajando' : (ctx.weightTrendKg > 0 ? 'tu peso está subiendo' : 'tu peso está estable'));
+    if (ctx.sessionsPerWeek) parts.push(ctx.sessionsPerWeek >= 3 ? 'estás entrenando con la frecuencia adecuada' : 'estás entrenando por debajo de las 3 sesiones/semana recomendadas');
+    if (ctx.avgSleep7 != null) parts.push(ctx.avgSleep7 >= (ctx.sleepGoal || 7) ? 'tu sueño está en buen nivel' : 'tu sueño está por debajo de tu objetivo, lo que puede frenar la recuperación y la pérdida de grasa');
+    if (parts.length) html += '<p>En conjunto: ' + parts.join(', ') + '.</p>';
+
+    html += '<p>A los ' + ctx.age + ' años, mantener 2-3 sesiones de fuerza semanales es especialmente importante para frenar la pérdida natural de masa muscular y densidad ósea asociada a la edad, y para sostener el metabolismo mientras pierdes grasa. Cuida también la proteína (' + (ctx.proteinTargetLow ? (ctx.proteinTargetLow + '-' + ctx.proteinTargetHigh + ' g/día') : '1.6-2.0 g por kg de peso') + ') y prioriza el sueño, que a estas edades influye más en la recuperación que en la veintena.</p>';
+
+    document.getElementById('healthOverallWrap').innerHTML = html;
+  }
+
+  function renderHealthTab() {
+    var ctx = computeHealthContext();
+    renderHealthPersonal(ctx);
+    renderHealthBody(ctx);
+    renderHealthActivity(ctx);
+    renderHealthRecovery(ctx);
+    renderHealthNutrition(ctx);
+    renderHealthOverall(ctx);
+  }
 
   // ---------------- Dashboard stats ----------------
   function computeStreak() {
@@ -835,7 +1044,7 @@
   }
   function renderAll() {
     renderWorkoutTable(); renderNutritionTable(); renderWeightTable(); renderSleepTable(); renderHrvTable();
-    renderDashboardStats(); renderCalendar(); renderSyncStatus(); renderPlanTab();
+    renderDashboardStats(); renderCalendar(); renderSyncStatus(); renderPlanTab(); renderHealthTab();
     var activeTab = document.querySelector('nav.tabs button.active').dataset.tab;
     renderChartsForTab(activeTab);
   }

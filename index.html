@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi Seguimiento de Salud</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f9f8; --card: #ffffff; --border: #e3e8e6; --text: #1f2b27; --text-muted: #6b7d76;
+    --accent: #0f9d78; --accent-dark: #0b7a5d; --accent-soft: #e6f5ef;
+    --orange: #e08a3c; --orange-soft: #fbeadc; --blue: #3b7de0; --blue-soft: #e4edfc;
+    --purple: #8b5fd1; --purple-soft: #f0e9fb; --pink: #d1568b; --pink-soft: #fbe6ef;
+    --red: #d64b4b; --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; font-size:14px; }
+  .app { max-width:1080px; margin:0 auto; padding:20px 20px 60px; }
+  header.top { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px; }
+  header.top h1 { font-size:20px; margin:0; }
+  header.top .sub { color:var(--text-muted); font-size:12px; }
+  nav.tabs { display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--border); overflow-x:auto; }
+  nav.tabs button { border:none; background:none; padding:10px 14px; font-size:14px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap; }
+  nav.tabs button.active { color:var(--accent-dark); border-bottom-color:var(--accent); }
+  .tab-panel { display:none; } .tab-panel.active { display:block; }
+  .grid { display:grid; gap:14px; } .grid.cols-4 { grid-template-columns:repeat(4,1fr); } .grid.cols-2 { grid-template-columns:repeat(2,1fr); }
+  @media (max-width:720px) { .grid.cols-4 { grid-template-columns:repeat(2,1fr); } .grid.cols-2 { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; }
+  .stat-card .label { color:var(--text-muted); font-size:12px; margin-bottom:4px; }
+  .stat-card .value { font-size:24px; font-weight:700; } .stat-card .value.small { font-size:18px; }
+  .stat-card .delta { font-size:12px; margin-top:4px; }
+  .delta.up { color:var(--red); } .delta.down { color:var(--accent-dark); } .delta.flat { color:var(--text-muted); }
+  .delta.ok { color: var(--accent-dark); } .delta.err { color: var(--red); }
+  h2.section-title { font-size:15px; margin:0 0 12px; }
+  .card h3 { font-size:14px; margin:0 0 10px; }
+  form.entry-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; align-items:end; margin-bottom:16px; }
+  form.entry-form .field { display:flex; flex-direction:column; gap:4px; }
+  form.entry-form label { font-size:11px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  form.entry-form input, form.entry-form select { padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:13px; background:#fff; color:var(--text); }
+  form.entry-form input:focus, form.entry-form select:focus { outline:2px solid var(--accent-soft); border-color:var(--accent); }
+  .btn { background:var(--accent); color:white; border:none; border-radius:8px; padding:9px 16px; font-weight:600; font-size:13px; cursor:pointer; }
+  .btn:hover { background:var(--accent-dark); }
+  .btn.secondary { background:var(--card); color:var(--text); border:1px solid var(--border); } .btn.secondary:hover { background:var(--bg); }
+  .btn.small { padding:5px 10px; font-size:12px; }
+  .btn.danger-outline { background:#fff; color:var(--red); border:1px solid #f2c9c9; } .btn.danger-outline:hover { background:#fdeeee; }
+  .btn:disabled { opacity:.6; cursor:default; }
+  table.log-table { width:100%; border-collapse:collapse; font-size:13px; }
+  table.log-table th, table.log-table td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); }
+  table.log-table th { color:var(--text-muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  table.log-table tr:last-child td { border-bottom:none; }
+  .empty-state { color:var(--text-muted); font-size:13px; padding:20px 0; text-align:center; }
+  .chart-wrap { position:relative; height:220px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; } @media (max-width:720px) { .two-col { grid-template-columns:1fr; } }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .pill.manual { background:var(--blue-soft); color:var(--blue); } .pill.garmin { background:var(--accent-soft); color:var(--accent-dark); }
+  .cal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .cal-dow { text-align:center; font-size:10px; color:var(--text-muted); font-weight:700; padding-bottom:2px; }
+  .cal-cell { aspect-ratio:1; border-radius:8px; border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; font-size:11px; color:var(--text-muted); background:#fff; }
+  .cal-cell.today { border-color:var(--accent); border-width:2px; } .cal-cell.empty { visibility:hidden; }
+  .dots { display:flex; gap:2px; } .dot { width:5px; height:5px; border-radius:50%; }
+  .dot.workout { background:var(--accent); } .dot.nutrition { background:var(--orange); } .dot.weight { background:var(--blue); } .dot.sleep { background:var(--purple); }
+  .settings-row { display:flex; gap:14px; flex-wrap:wrap; align-items:end; }
+  .settings-row .field { display:flex; flex-direction:column; gap:4px; } .settings-row label { font-size:11px; color:var(--text-muted); font-weight:600; }
+  .settings-row input { padding:7px 9px; border:1px solid var(--border); border-radius:8px; width:110px; }
+  .toolbar { display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; align-items:center; }
+  .note-muted { color:var(--text-muted); font-size:12px; margin-top:14px; }
+  .sync-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px; }
+  .sync-row:last-child { border-bottom:none; }
+  /* Auth screen */
+  #authScreen { max-width:380px; margin:80px auto; }
+  #authScreen h1 { text-align:center; font-size:22px; }
+  #authScreen .card { display:flex; flex-direction:column; gap:10px; }
+  #authScreen input { padding:10px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+  #authTabs { display:flex; gap:6px; margin-bottom:6px; }
+  #authTabs button { flex:1; padding:8px; border:1px solid var(--border); background:#fff; border-radius:8px; cursor:pointer; font-weight:600; color:var(--text-muted); }
+  #authTabs button.active { background:var(--accent-soft); color:var(--accent-dark); border-color:var(--accent); }
+  #authMsg { font-size:12px; color:var(--text-muted); min-height:16px; }
+  #authMsg.error { color:var(--red); }
+  #appScreen { display:none; }
+  .userbar { font-size:12px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div id="authScreen">
+  <h1>🏃 Mi Seguimiento de Salud</h1>
+  <div class="card">
+    <div id="authTabs">
+      <button data-mode="signin" class="active">Iniciar sesión</button>
+      <button data-mode="signup">Crear cuenta</button>
+    </div>
+    <input type="email" id="authEmail" placeholder="Email" autocomplete="email">
+    <input type="password" id="authPassword" placeholder="Contraseña" autocomplete="current-password">
+    <button class="btn" id="authSubmit">Entrar</button>
+    <div id="authMsg"></div>
+  </div>
+</div>
+
+<div class="app" id="appScreen">
+
+  <header class="top">
+    <div>
+      <h1>🏃 Mi Seguimiento de Salud</h1>
+      <div class="sub">Entrenamientos · Nutrición · Peso · Sueño · HRV — sincronizado en la nube</div>
+    </div>
+    <div class="toolbar">
+      <span class="userbar" id="userEmail"></span>
+      <button class="btn secondary small" id="btnSignOut">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="dashboard" class="active">Resumen</button>
+    <button data-tab="workouts">Entrenamientos</button>
+    <button data-tab="nutrition">Nutrición</button>
+    <button data-tab="weight">Peso</button>
+    <button data-tab="sleep">Sueño</button>
+    <button data-tab="hrv">HRV</button>
+    <button data-tab="settings">Ajustes</button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <section class="tab-panel active" id="tab-dashboard">
+    <div class="grid cols-4" style="margin-bottom:14px;">
+      <div class="card stat-card"><div class="label">Racha de registro</div><div class="value" id="statStreak">0 días</div><div class="delta flat" id="statStreakSub">Sin datos aún</div></div>
+      <div class="card stat-card"><div class="label">Peso actual</div><div class="value" id="statWeight">—</div><div class="delta flat" id="statWeightSub">—</div></div>
+      <div class="card stat-card"><div class="label">Calorías (media 7d)</div><div class="value small" id="statCalories">—</div><div class="delta flat" id="statCaloriesSub">—</div></div>
+      <div class="card stat-card"><div class="label">Sueño (media 7d)</div><div class="value small" id="statSleep">—</div><div class="delta flat" id="statSleepSub">—</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Estado de sincronización con Garmin</h3>
+      <div id="syncStatusWrap"><div class="empty-state">Todavía no se ha ejecutado ninguna sincronización.</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="cal-header">
+        <h3 style="margin:0;">Calendario de constancia — <span id="calMonthLabel"></span></h3>
+        <div><button class="btn secondary small" id="calPrev">‹</button> <button class="btn secondary small" id="calNext">›</button></div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div style="display:flex; gap:14px; margin-top:12px; font-size:11px; color:var(--text-muted); flex-wrap:wrap;">
+        <span><span class="dot workout" style="display:inline-block;"></span> Entreno</span>
+        <span><span class="dot nutrition" style="display:inline-block;"></span> Nutrición</span>
+        <span><span class="dot weight" style="display:inline-block;"></span> Peso</span>
+        <span><span class="dot sleep" style="display:inline-block;"></span> Sueño</span>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card"><h3>Tendencia de peso</h3><div class="chart-wrap"><canvas id="chartWeightDash"></canvas></div></div>
+      <div class="card"><h3>Calorías diarias (14 días)</h3><div class="chart-wrap"><canvas id="chartCaloriesDash"></canvas></div></div>
+    </div>
+  </section>
+
+  <!-- WORKOUTS -->
+  <section class="tab-panel" id="tab-workouts">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Añadir entrenamiento manual</h3>
+      <form class="entry-form" id="formWorkout">
+        <div class="field"><label>Fecha</label><input type="date" name="date" required></div>
+        <div class="field"><label>Tipo</label><select name="type"><option>Correr</option><option>Ciclismo</option><option>Fuerza</option><option>Nadar</option><option>Senderismo</option><option>Otro</option></select></div>
+        <div class="field"><label>Duración (min)</label><input type="number" name="duration_min" min="0" step="1" required></div>
+        <div class="field"><label>Distancia (km)</label><input type="number" name="distance_km" min="0" step="0.1"></div>
+        <div class="field"><label>RPE (1-10)</label><input type="number" name="rpe" min="1" max="10" step="1"></div>
+        <div class="field"><label>Notas</label><input type="text" name="notes" placeholder="opcional"></div>
+        <div class="field"><button type="submit" class="btn">Guardar</button></div>
+      </form>
+      <p class="note-muted">Los entrenamientos registrados por tu Garmin aparecen aquí automáticamente tras cada sincronización (etiqueta "Garmin").</p>
+    </div>
+    <div class="card" style="margin-bottom:14px;"><h3>Minutos entrenados por semana</h3><div class="chart-wrap"><canvas id="chartWorkoutWeekly"></canvas></div></div>
+    <div class="card"><h3 class="section-title">Registro de entrenamientos</h3><div id="workoutTableWrap"></div></div>
+  </section>
+
+  <!-- NUTRITION -->
+  <section class="tab-panel" id="tab-nutrition">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Añadir registro nutricional</h3>
+      <form class="entry-form" id="formNutrition">
+        <div class="field"><label>Fecha</label><input type="date" name="date" required></div>
+        <div class="field"><label>Calorías (kcal)</label><input type="number" name="calories" min="0" step="1" required></div>
+        <div class="field"><label>Proteína (g)</label><input type="number" name="protein_g" min="0" step="1"></div>
+        <div class="field"><label>Carbohidratos (g)</label><input type="number" name="carbs_g" min="0" step="1"></div>
+        <div class="field"><label>Grasas (g)</label><input type="number" name="fat_g" min="0" step="1"></div>
+        <div class="field"><label>Notas</label><input type="text" name="notes" placeholder="opcional"></div>
+        <div class="field"><button type="submit" class="btn">Guardar</button></div>
+      </form>
+      <p class="note-muted">Garmin no registra nutrición, así que esta pestaña siempre es manual.</p>
+    </div>
+    <div class="card" style="margin-bottom:14px;"><h3>Calorías diarias (30 días) vs objetivo</h3><div class="chart-wrap"><canvas id="chartCaloriesFull"></canvas></div></div>
+    <div class="card"><h3 class="section-title">Registro de nutrición</h3><div id="nutritionTableWrap"></div></div>
+  </section>
+
+  <!-- WEIGHT -->
+  <section class="tab-panel" id="tab-weight">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Añadir peso / medidas manualmente</h3>
+      <form class="entry-form" id="formWeight">
+        <div class="field"><label>Fecha</label><input type="date" name="date" required></div>
+        <div class="field"><label>Peso (kg)</label><input type="number" name="weight_kg" min="0" step="0.1" required></div>
+        <div class="field"><label>Cintura (cm)</label><input type="number" name="waist_cm" min="0" step="0.1"></div>
+        <div class="field"><label>% Grasa corporal</label><input type="number" name="body_fat_pct" min="0" step="0.1"></div>
+        <div class="field"><label>Notas</label><input type="text" name="notes" placeholder="opcional"></div>
+        <div class="field"><button type="submit" class="btn">Guardar</button></div>
+      </form>
+      <p class="note-muted">La báscula de bioimpedancia de Garmin sube peso y % grasa automáticamente (etiqueta "Garmin").</p>
+    </div>
+    <div class="card" style="margin-bottom:14px;"><h3>Tendencia de peso completa</h3><div class="chart-wrap"><canvas id="chartWeightFull"></canvas></div></div>
+    <div class="card"><h3 class="section-title">Registro de peso y medidas</h3><div id="weightTableWrap"></div></div>
+  </section>
+
+  <!-- SLEEP -->
+  <section class="tab-panel" id="tab-sleep">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Añadir registro de sueño manual</h3>
+      <form class="entry-form" id="formSleep">
+        <div class="field"><label>Fecha</label><input type="date" name="date" required></div>
+        <div class="field"><label>Horas dormidas</label><input type="number" name="hours" min="0" max="24" step="0.1" required></div>
+        <div class="field"><label>Calidad (1-5)</label><input type="number" name="quality" min="1" max="5" step="1"></div>
+        <div class="field"><label>Notas</label><input type="text" name="notes" placeholder="opcional"></div>
+        <div class="field"><button type="submit" class="btn">Guardar</button></div>
+      </form>
+      <p class="note-muted">Tu Garmin sube horas y fases de sueño automáticamente (etiqueta "Garmin").</p>
+    </div>
+    <div class="card" style="margin-bottom:14px;"><h3>Horas de sueño (14 días) vs objetivo</h3><div class="chart-wrap"><canvas id="chartSleepFull"></canvas></div></div>
+    <div class="card"><h3 class="section-title">Registro de sueño</h3><div id="sleepTableWrap"></div></div>
+  </section>
+
+  <!-- HRV -->
+  <section class="tab-panel" id="tab-hrv">
+    <div class="card" style="margin-bottom:14px;">
+      <h3>Variabilidad de la frecuencia cardíaca (HRV)</h3>
+      <p class="note-muted" style="margin-top:0;">Este dato solo lo puede medir el reloj, así que llega exclusivamente desde la sincronización con Garmin — no hay formulario manual.</p>
+      <div class="chart-wrap"><canvas id="chartHrv"></canvas></div>
+    </div>
+    <div class="card"><h3 class="section-title">Registro de HRV</h3><div id="hrvTableWrap"></div></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="tab-panel" id="tab-settings">
+    <div class="card">
+      <h3>Objetivos personales</h3>
+      <div class="settings-row">
+        <div class="field"><label>Objetivo calorías/día</label><input type="number" id="goalCalories" min="0" step="10"></div>
+        <div class="field"><label>Objetivo sueño (h)</label><input type="number" id="goalSleep" min="0" step="0.5"></div>
+        <div class="field"><label>Peso objetivo (kg)</label><input type="number" id="goalWeight" min="0" step="0.1"></div>
+        <div class="field"><button class="btn" id="btnSaveGoals">Guardar objetivos</button></div>
+      </div>
+      <p class="note-muted">Tus datos viven en una base de datos Supabase privada (solo tú puedes leerlos, protegido por Row Level Security) y esta página es una web estática — puedes abrirla desde el móvil, el ordenador o donde quieras.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  var SUPABASE_URL = 'https://zoizkucpbqnxyzuepnzo.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_LRuVJCSbxDGhveq68h8t2A_-3DUF-ev';
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  var state = { workouts: [], nutrition: [], weight: [], sleep: [], hrv: [], sync: [], settings: { calorie_goal: 2200, sleep_goal: 8, weight_goal: null } };
+
+  function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function fmtDate(iso) { var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function sortByDateDesc(arr) { return arr.slice().sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; }); }
+  function sortByDateAsc(arr) { return arr.slice().sort(function(a,b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
+  function stripTime(d) { var x = new Date(d); x.setHours(0,0,0,0); return x; }
+
+  // ---------------- AUTH ----------------
+  var authMode = 'signin';
+  document.querySelectorAll('#authTabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      authMode = b.dataset.mode;
+      document.querySelectorAll('#authTabs button').forEach(function (x) { x.classList.remove('active'); });
+      b.classList.add('active');
+      document.getElementById('authSubmit').textContent = authMode === 'signin' ? 'Entrar' : 'Crear cuenta';
+      document.getElementById('authMsg').textContent = '';
+    });
+  });
+
+  document.getElementById('authSubmit').addEventListener('click', async function () {
+    var email = document.getElementById('authEmail').value.trim();
+    var password = document.getElementById('authPassword').value;
+    var msg = document.getElementById('authMsg');
+    msg.className = ''; msg.textContent = 'Procesando…';
+    try {
+      if (authMode === 'signin') {
+        var r = await sb.auth.signInWithPassword({ email: email, password: password });
+        if (r.error) throw r.error;
+      } else {
+        var r2 = await sb.auth.signUp({ email: email, password: password });
+        if (r2.error) throw r2.error;
+        if (r2.data && r2.data.user && !r2.data.session) {
+          msg.textContent = 'Cuenta creada. Revisa tu email (' + email + ') para confirmar antes de iniciar sesión.';
+          return;
+        }
+      }
+      msg.textContent = '';
+    } catch (err) {
+      msg.className = 'error';
+      msg.textContent = err.message || 'Error de autenticación';
+    }
+  });
+
+  document.getElementById('btnSignOut').addEventListener('click', function () { sb.auth.signOut(); });
+
+  sb.auth.onAuthStateChange(function (event, session) {
+    if (session) {
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('appScreen').style.display = 'block';
+      document.getElementById('userEmail').textContent = session.user.email;
+      loadAllData();
+    } else {
+      document.getElementById('authScreen').style.display = 'block';
+      document.getElementById('appScreen').style.display = 'none';
+    }
+  });
+
+  // ---------------- Tabs ----------------
+  var tabButtons = document.querySelectorAll('nav.tabs button');
+  var panels = document.querySelectorAll('.tab-panel');
+  tabButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      tabButtons.forEach(function (b) { b.classList.remove('active'); });
+      panels.forEach(function (p) { p.classList.remove('active'); });
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      renderChartsForTab(btn.dataset.tab);
+    });
+  });
+
+  document.querySelectorAll('input[type=date]').forEach(function (inp) { inp.value = todayStr(); });
+
+  // ---------------- Data loading ----------------
+  async function loadAllData() {
+    var results = await Promise.all([
+      sb.from('workouts').select('*'),
+      sb.from('nutrition_logs').select('*'),
+      sb.from('body_metrics').select('*'),
+      sb.from('sleep_logs').select('*'),
+      sb.from('hrv_logs').select('*'),
+      sb.from('sync_status').select('*'),
+      sb.from('settings').select('*').maybeSingle()
+    ]);
+    state.workouts = results[0].data || [];
+    state.nutrition = results[1].data || [];
+    state.weight = results[2].data || [];
+    state.sleep = results[3].data || [];
+    state.hrv = results[4].data || [];
+    state.sync = results[5].data || [];
+    if (results[6].data) state.settings = results[6].data;
+    document.getElementById('goalCalories').value = state.settings.calorie_goal || '';
+    document.getElementById('goalSleep').value = state.settings.sleep_goal || '';
+    document.getElementById('goalWeight').value = state.settings.weight_goal || '';
+    renderAll();
+  }
+
+  // ---------------- Generic table ----------------
+  function sourcePill(source) { return '<span class="pill ' + (source === 'garmin' ? 'garmin' : 'manual') + '">' + (source === 'garmin' ? 'Garmin' : 'Manual') + '</span>'; }
+
+  function renderTable(container, rows, columns, onDelete) {
+    if (!rows.length) { container.innerHTML = '<div class="empty-state">Todavía no hay registros.</div>'; return; }
+    var html = '<table class="log-table"><thead><tr>';
+    columns.forEach(function (c) { html += '<th>' + c.label + '</th>'; });
+    html += '<th></th></tr></thead><tbody>';
+    rows.forEach(function (row) {
+      html += '<tr>';
+      columns.forEach(function (c) {
+        var v = row[c.key];
+        if (c.key === 'date') v = fmtDate(v);
+        if (c.key === 'source') v = sourcePill(v);
+        html += '<td>' + (v === undefined || v === null || v === '' ? '—' : v) + '</td>';
+      });
+      html += '<td><button class="btn danger-outline small" data-id="' + row.id + '">Eliminar</button></td></tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    container.querySelectorAll('button[data-id]').forEach(function (b) { b.addEventListener('click', function () { onDelete(b.dataset.id); }); });
+  }
+
+  // ---------------- Workouts ----------------
+  document.getElementById('formWorkout').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var row = { date: fd.get('date'), type: fd.get('type'), duration_min: Number(fd.get('duration_min')) || 0,
+      distance_km: fd.get('distance_km') ? Number(fd.get('distance_km')) : null, rpe: fd.get('rpe') ? Number(fd.get('rpe')) : null,
+      notes: fd.get('notes') || '', source: 'manual' };
+    var r = await sb.from('workouts').insert(row);
+    if (r.error) { alert(r.error.message); return; }
+    e.target.reset(); e.target.querySelector('input[type=date]').value = todayStr();
+    await loadAllData();
+  });
+  function renderWorkoutTable() {
+    renderTable(document.getElementById('workoutTableWrap'), sortByDateDesc(state.workouts),
+      [{key:'date',label:'Fecha'},{key:'type',label:'Tipo'},{key:'duration_min',label:'Min'},{key:'distance_km',label:'Km'},{key:'rpe',label:'RPE'},{key:'source',label:'Origen'},{key:'notes',label:'Notas'}],
+      async function (id) { await sb.from('workouts').delete().eq('id', id); await loadAllData(); });
+  }
+  var chartWorkoutWeekly;
+  function renderWorkoutChart() {
+    var weeks = lastNWeeksMinutes(8);
+    var ctx = document.getElementById('chartWorkoutWeekly');
+    if (chartWorkoutWeekly) chartWorkoutWeekly.destroy();
+    chartWorkoutWeekly = new Chart(ctx, { type:'bar', data:{ labels: weeks.labels, datasets:[{ label:'Minutos', data: weeks.values, backgroundColor:'#0f9d78', borderRadius:4 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true } } } });
+  }
+  function lastNWeeksMinutes(n) {
+    var now = new Date(); var labels = [], values = [];
+    for (var i = n-1; i >= 0; i--) {
+      var weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay() - i*7 + 1);
+      var weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate()+6);
+      var total = 0;
+      state.workouts.forEach(function (w) { var d = new Date(w.date+'T00:00:00'); if (d >= stripTime(weekStart) && d <= stripTime(weekEnd)) total += (w.duration_min||0); });
+      labels.push((weekStart.getMonth()+1)+'/'+weekStart.getDate()); values.push(total);
+    }
+    return { labels: labels, values: values };
+  }
+
+  // ---------------- Nutrition ----------------
+  document.getElementById('formNutrition').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var row = { date: fd.get('date'), calories: Number(fd.get('calories'))||0, protein_g: fd.get('protein_g')?Number(fd.get('protein_g')):null,
+      carbs_g: fd.get('carbs_g')?Number(fd.get('carbs_g')):null, fat_g: fd.get('fat_g')?Number(fd.get('fat_g')):null, notes: fd.get('notes')||'', source:'manual' };
+    var r = await sb.from('nutrition_logs').insert(row);
+    if (r.error) { alert(r.error.message); return; }
+    e.target.reset(); e.target.querySelector('input[type=date]').value = todayStr();
+    await loadAllData();
+  });
+  function renderNutritionTable() {
+    renderTable(document.getElementById('nutritionTableWrap'), sortByDateDesc(state.nutrition),
+      [{key:'date',label:'Fecha'},{key:'calories',label:'Kcal'},{key:'protein_g',label:'Prot (g)'},{key:'carbs_g',label:'Carb (g)'},{key:'fat_g',label:'Grasa (g)'},{key:'notes',label:'Notas'}],
+      async function (id) { await sb.from('nutrition_logs').delete().eq('id', id); await loadAllData(); });
+  }
+  function lastNDaysSeries(arr, valueKey, n) {
+    var now = new Date(); now.setHours(0,0,0,0); var labels=[], values=[]; var byDate={};
+    arr.forEach(function (r) { byDate[r.date] = (byDate[r.date]||0) + (r[valueKey]||0); });
+    for (var i=n-1; i>=0; i--) { var d=new Date(now); d.setDate(now.getDate()-i); var key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); labels.push((d.getMonth()+1)+'/'+d.getDate()); values.push(byDate[key]||null); }
+    return { labels: labels, values: values };
+  }
+  var chartCaloriesFull, chartCaloriesDash;
+  function renderNutritionChart() {
+    var series = lastNDaysSeries(state.nutrition, 'calories', 30); var goal = state.settings.calorie_goal;
+    var ctx = document.getElementById('chartCaloriesFull'); if (chartCaloriesFull) chartCaloriesFull.destroy();
+    chartCaloriesFull = new Chart(ctx, { type:'bar', data:{ labels: series.labels, datasets:[ {label:'Calorías', data: series.values, backgroundColor:'#e08a3c', borderRadius:4}, {label:'Objetivo', data: series.labels.map(function(){return goal;}), type:'line', borderColor:'#3b7de0', pointRadius:0, borderDash:[6,4]} ] }, options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true } } } });
+  }
+  function renderCaloriesDashChart() {
+    var series = lastNDaysSeries(state.nutrition, 'calories', 14); var goal = state.settings.calorie_goal;
+    var ctx = document.getElementById('chartCaloriesDash'); if (chartCaloriesDash) chartCaloriesDash.destroy();
+    chartCaloriesDash = new Chart(ctx, { type:'bar', data:{ labels: series.labels, datasets:[ {label:'Calorías', data: series.values, backgroundColor:'#e08a3c', borderRadius:4}, {label:'Objetivo', data: series.labels.map(function(){return goal;}), type:'line', borderColor:'#3b7de0', pointRadius:0, borderDash:[6,4]} ] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true } } } });
+  }
+
+  // ---------------- Weight ----------------
+  document.getElementById('formWeight').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var row = { date: fd.get('date'), weight_kg: Number(fd.get('weight_kg'))||0, waist_cm: fd.get('waist_cm')?Number(fd.get('waist_cm')):null,
+      body_fat_pct: fd.get('body_fat_pct')?Number(fd.get('body_fat_pct')):null, notes: fd.get('notes')||'', source:'manual' };
+    var r = await sb.from('body_metrics').insert(row);
+    if (r.error) { alert(r.error.message); return; }
+    e.target.reset(); e.target.querySelector('input[type=date]').value = todayStr();
+    await loadAllData();
+  });
+  function renderWeightTable() {
+    renderTable(document.getElementById('weightTableWrap'), sortByDateDesc(state.weight),
+      [{key:'date',label:'Fecha'},{key:'weight_kg',label:'Peso (kg)'},{key:'waist_cm',label:'Cintura (cm)'},{key:'body_fat_pct',label:'% Grasa'},{key:'source',label:'Origen'},{key:'notes',label:'Notas'}],
+      async function (id) { await sb.from('body_metrics').delete().eq('id', id); await loadAllData(); });
+  }
+  var chartWeightFull, chartWeightDash;
+  function weightSeries() { var sorted = sortByDateAsc(state.weight); return { labels: sorted.map(function(r){return fmtDate(r.date);}), values: sorted.map(function(r){return r.weight_kg;}) }; }
+  function renderWeightChart() {
+    var series = weightSeries(); var goal = state.settings.weight_goal;
+    var ctx = document.getElementById('chartWeightFull'); if (chartWeightFull) chartWeightFull.destroy();
+    var datasets = [{ label:'Peso (kg)', data: series.values, borderColor:'#3b7de0', backgroundColor:'#3b7de0', tension:.25, pointRadius:3 }];
+    if (goal) datasets.push({ label:'Objetivo', data: series.values.map(function(){return goal;}), borderColor:'#0f9d78', borderDash:[6,4], pointRadius:0 });
+    chartWeightFull = new Chart(ctx, { type:'line', data:{ labels: series.labels, datasets: datasets }, options:{ responsive:true, maintainAspectRatio:false } });
+  }
+  function renderWeightDashChart() {
+    var series = weightSeries(); var recent = { labels: series.labels.slice(-14), values: series.values.slice(-14) };
+    var ctx = document.getElementById('chartWeightDash'); if (chartWeightDash) chartWeightDash.destroy();
+    chartWeightDash = new Chart(ctx, { type:'line', data:{ labels: recent.labels, datasets:[{ label:'Peso (kg)', data: recent.values, borderColor:'#3b7de0', backgroundColor:'#3b7de0', tension:.25, pointRadius:3 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} } });
+  }
+
+  // ---------------- Sleep ----------------
+  document.getElementById('formSleep').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var fd = new FormData(e.target);
+    var row = { date: fd.get('date'), hours: Number(fd.get('hours'))||0, quality: fd.get('quality')?Number(fd.get('quality')):null, notes: fd.get('notes')||'', source:'manual' };
+    var r = await sb.from('sleep_logs').insert(row);
+    if (r.error) { alert(r.error.message); return; }
+    e.target.reset(); e.target.querySelector('input[type=date]').value = todayStr();
+    await loadAllData();
+  });
+  function renderSleepTable() {
+    renderTable(document.getElementById('sleepTableWrap'), sortByDateDesc(state.sleep),
+      [{key:'date',label:'Fecha'},{key:'hours',label:'Horas'},{key:'quality',label:'Calidad'},{key:'deep_min',label:'Profundo (min)'},{key:'rem_min',label:'REM (min)'},{key:'source',label:'Origen'},{key:'notes',label:'Notas'}],
+      async function (id) { await sb.from('sleep_logs').delete().eq('id', id); await loadAllData(); });
+  }
+  var chartSleepFull;
+  function renderSleepChart() {
+    var series = lastNDaysSeries(state.sleep, 'hours', 14); var goal = state.settings.sleep_goal;
+    var ctx = document.getElementById('chartSleepFull'); if (chartSleepFull) chartSleepFull.destroy();
+    chartSleepFull = new Chart(ctx, { type:'bar', data:{ labels: series.labels, datasets:[ {label:'Horas', data: series.values, backgroundColor:'#8b5fd1', borderRadius:4}, {label:'Objetivo', data: series.labels.map(function(){return goal;}), type:'line', borderColor:'#0f9d78', pointRadius:0, borderDash:[6,4]} ] }, options:{ responsive:true, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true } } } });
+  }
+
+  // ---------------- HRV ----------------
+  function renderHrvTable() {
+    renderTable(document.getElementById('hrvTableWrap'), sortByDateDesc(state.hrv),
+      [{key:'date',label:'Fecha'},{key:'value_ms',label:'HRV (ms)'},{key:'status',label:'Estado'},{key:'source',label:'Origen'}],
+      async function (id) { await sb.from('hrv_logs').delete().eq('id', id); await loadAllData(); });
+  }
+  var chartHrv;
+  function renderHrvChart() {
+    var series = lastNDaysSeries(state.hrv, 'value_ms', 30);
+    var ctx = document.getElementById('chartHrv'); if (chartHrv) chartHrv.destroy();
+    chartHrv = new Chart(ctx, { type:'line', data:{ labels: series.labels, datasets:[{ label:'HRV (ms)', data: series.values, borderColor:'#8b5fd1', backgroundColor:'#8b5fd1', tension:.25, pointRadius:2 }] }, options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}} } });
+  }
+
+  // ---------------- Settings ----------------
+  document.getElementById('btnSaveGoals').addEventListener('click', async function () {
+    var calorie_goal = Number(document.getElementById('goalCalories').value) || 2200;
+    var sleep_goal = Number(document.getElementById('goalSleep').value) || 8;
+    var wg = document.getElementById('goalWeight').value;
+    var weight_goal = wg ? Number(wg) : null;
+    var r = await sb.from('settings').upsert({ calorie_goal: calorie_goal, sleep_goal: sleep_goal, weight_goal: weight_goal, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    if (r.error) { alert(r.error.message); return; }
+    await loadAllData();
+  });
+
+  // ---------------- Sync status ----------------
+  function renderSyncStatus() {
+    var wrap = document.getElementById('syncStatusWrap');
+    if (!state.sync.length) { wrap.innerHTML = '<div class="empty-state">Todavía no se ha ejecutado ninguna sincronización.</div>'; return; }
+    var labelMap = { sleep:'Sueño', hrv:'HRV', activities:'Entrenamientos', body_composition:'Composición corporal' };
+    var html = '';
+    state.sync.forEach(function (s) {
+      var when = s.last_run ? new Date(s.last_run).toLocaleString('es-ES') : '—';
+      var ok = s.status === 'ok';
+      html += '<div class="sync-row"><span>' + (labelMap[s.source] || s.source) + '</span>' +
+        '<span class="delta ' + (ok ? 'ok' : 'err') + '">' + (ok ? '✓ OK' : '✗ Error') + ' · ' + when + (s.rows_added != null ? ' · +' + s.rows_added + ' filas' : '') + '</span></div>';
+    });
+    wrap.innerHTML = html;
+  }
+
+  // ---------------- Dashboard stats ----------------
+  function computeStreak() {
+    var datesWithData = new Set();
+    [state.workouts, state.nutrition, state.weight, state.sleep].forEach(function (arr) { arr.forEach(function (r) { datesWithData.add(r.date); }); });
+    var streak = 0; var cursor = new Date(); cursor.setHours(0,0,0,0); var todayKey = todayStr();
+    if (!datesWithData.has(todayKey)) cursor.setDate(cursor.getDate()-1);
+    while (true) { var key = cursor.getFullYear()+'-'+String(cursor.getMonth()+1).padStart(2,'0')+'-'+String(cursor.getDate()).padStart(2,'0'); if (datesWithData.has(key)) { streak++; cursor.setDate(cursor.getDate()-1); } else break; }
+    return streak;
+  }
+  function avg(arr, key, days) {
+    var now = new Date(); now.setHours(0,0,0,0); var cutoff = new Date(now); cutoff.setDate(now.getDate()-days+1);
+    var vals = arr.filter(function (r) { return new Date(r.date+'T00:00:00') >= cutoff; }).map(function (r) { return r[key]; }).filter(function (v) { return v!=null; });
+    if (!vals.length) return null;
+    return vals.reduce(function(a,b){return a+b;},0)/vals.length;
+  }
+  function renderDashboardStats() {
+    var streak = computeStreak();
+    document.getElementById('statStreak').textContent = streak + (streak===1?' día':' días');
+    document.getElementById('statStreakSub').textContent = streak>0 ? '¡Sigue así!' : 'Añade un registro hoy para empezar';
+    var wSorted = sortByDateAsc(state.weight);
+    if (wSorted.length) {
+      var last = wSorted[wSorted.length-1];
+      document.getElementById('statWeight').textContent = last.weight_kg + ' kg';
+      if (wSorted.length > 1) {
+        var prev = wSorted[wSorted.length-2]; var diff = last.weight_kg - prev.weight_kg; var el = document.getElementById('statWeightSub');
+        el.textContent = (diff>0?'+':'') + diff.toFixed(1) + ' kg desde el anterior'; el.className = 'delta ' + (diff>0?'up':diff<0?'down':'flat');
+      } else document.getElementById('statWeightSub').textContent = fmtDate(last.date);
+    } else { document.getElementById('statWeight').textContent = '—'; document.getElementById('statWeightSub').textContent = 'Sin registros'; }
+    var avgCal = avg(state.nutrition, 'calories', 7);
+    document.getElementById('statCalories').textContent = avgCal ? Math.round(avgCal)+' kcal' : '—';
+    document.getElementById('statCaloriesSub').textContent = avgCal ? ('Objetivo: '+state.settings.calorie_goal+' kcal') : 'Sin registros';
+    var avgSleep = avg(state.sleep, 'hours', 7);
+    document.getElementById('statSleep').textContent = avgSleep ? avgSleep.toFixed(1)+' h' : '—';
+    document.getElementById('statSleepSub').textContent = avgSleep ? ('Objetivo: '+state.settings.sleep_goal+' h') : 'Sin registros';
+  }
+
+  // ---------------- Calendar ----------------
+  var calCursor = new Date(); calCursor.setDate(1); calCursor.setHours(0,0,0,0);
+  var MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var DOW_ES = ['L','M','X','J','V','S','D'];
+  function renderCalendar() {
+    document.getElementById('calMonthLabel').textContent = MONTHS_ES[calCursor.getMonth()] + ' ' + calCursor.getFullYear();
+    var grid = document.getElementById('calGrid'); grid.innerHTML = '';
+    DOW_ES.forEach(function (d) { var el = document.createElement('div'); el.className='cal-dow'; el.textContent=d; grid.appendChild(el); });
+    var firstDay = new Date(calCursor); var startOffset = (firstDay.getDay()+6)%7;
+    for (var i=0;i<startOffset;i++) { var e=document.createElement('div'); e.className='cal-cell empty'; grid.appendChild(e); }
+    var daysInMonth = new Date(calCursor.getFullYear(), calCursor.getMonth()+1, 0).getDate();
+    var todayKey = todayStr();
+    for (var day=1; day<=daysInMonth; day++) {
+      var key = calCursor.getFullYear()+'-'+String(calCursor.getMonth()+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      var cell = document.createElement('div'); cell.className = 'cal-cell' + (key===todayKey?' today':'');
+      var num = document.createElement('div'); num.textContent = day; cell.appendChild(num);
+      var dotsWrap = document.createElement('div'); dotsWrap.className='dots';
+      if (state.workouts.some(function(r){return r.date===key;})) { var d1=document.createElement('div'); d1.className='dot workout'; dotsWrap.appendChild(d1); }
+      if (state.nutrition.some(function(r){return r.date===key;})) { var d2=document.createElement('div'); d2.className='dot nutrition'; dotsWrap.appendChild(d2); }
+      if (state.weight.some(function(r){return r.date===key;})) { var d3=document.createElement('div'); d3.className='dot weight'; dotsWrap.appendChild(d3); }
+      if (state.sleep.some(function(r){return r.date===key;})) { var d4=document.createElement('div'); d4.className='dot sleep'; dotsWrap.appendChild(d4); }
+      cell.appendChild(dotsWrap); grid.appendChild(cell);
+    }
+  }
+  document.getElementById('calPrev').addEventListener('click', function () { calCursor.setMonth(calCursor.getMonth()-1); renderCalendar(); });
+  document.getElementById('calNext').addEventListener('click', function () { calCursor.setMonth(calCursor.getMonth()+1); renderCalendar(); });
+
+  // ---------------- Orchestration ----------------
+  function renderChartsForTab(tab) {
+    if (tab==='dashboard') { renderWeightDashChart(); renderCaloriesDashChart(); }
+    if (tab==='workouts') renderWorkoutChart();
+    if (tab==='nutrition') renderNutritionChart();
+    if (tab==='weight') renderWeightChart();
+    if (tab==='sleep') renderSleepChart();
+    if (tab==='hrv') renderHrvChart();
+  }
+  function renderAll() {
+    renderWorkoutTable(); renderNutritionTable(); renderWeightTable(); renderSleepTable(); renderHrvTable();
+    renderDashboardStats(); renderCalendar(); renderSyncStatus();
+    var activeTab = document.querySelector('nav.tabs button.active').dataset.tab;
+    renderChartsForTab(activeTab);
+  }
+})();
+</script>
+</body>
+</html>

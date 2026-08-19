@@ -1,0 +1,46 @@
+name: Garmin Sync
+
+on:
+  schedule:
+    # 08:00 UTC ~ 09:00-10:00 hora de España según horario de verano/invierno.
+    # GitHub puede retrasar la ejecución unos minutos bajo carga; para algo
+    # más preciso ejecútalo también manualmente con "Run workflow".
+    - cron: '0 8 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Restaurar caché de sesión Garmin (evita re-logins innecesarios)
+        uses: actions/cache@v4
+        with:
+          path: .garmin_tokens
+          key: garmin-tokens-${{ github.run_id }}
+          restore-keys: |
+            garmin-tokens-
+
+      - name: Sincronizar Garmin -> Supabase
+        env:
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_USER_ID: ${{ secrets.SUPABASE_USER_ID }}
+        run: python garmin_sync.py
+
+      - name: Subir log como artefacto (para depurar si algo falla)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: garmin-sync-log
+          path: garmin_sync.log

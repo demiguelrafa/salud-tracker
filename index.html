@@ -188,13 +188,13 @@
   <!-- PLAN DE ENTRENAMIENTO -->
   <section class="tab-panel" id="tab-plan">
     <div class="card" style="margin-bottom:14px;">
-      <h3>Tu plan semanal de fuerza (3 días) — adaptado a tus datos de Garmin</h3>
+      <h3>Tu entrenamiento semanal completo (3 días: fuerza + cardio) — adaptado a tus datos de Garmin</h3>
       <div id="planSummary"></div>
-      <div style="margin-top:10px;"><button class="btn secondary small" id="btnRegenPlan">↻ Regenerar con mis datos actuales</button></div>
+      <div style="margin-top:10px;"><button class="btn" id="btnRegenPlan">↻ Refrescar entrenamiento con mis datos actuales</button></div>
     </div>
     <div class="grid cols-3" id="planDaysWrap"></div>
     <div class="card" style="margin-top:14px;">
-      <h3>Cómo combinarlo con tu cardio actual</h3>
+      <h3>Fase actual y progresión</h3>
       <div id="planCardioNote" class="note-muted" style="margin-top:0;"></div>
     </div>
   </section>
@@ -459,24 +459,26 @@
   }
 
   // ---------------- Plan de entrenamiento ----------------
-  // Plantilla full-body x3 para principiante con acceso a gimnasio completo,
-  // sesiones de 45-60 min, orientada a pérdida de grasa + definición muscular.
+  // Plantilla full-body x3 para principiante con acceso a gimnasio completo.
+  // Cada sesión combina fuerza + cardio (calentamiento y final) porque el objetivo
+  // principal ahora es perder peso; la fuerza se mantiene alta para no perder músculo
+  // y poder pasar a la fase de definición más adelante.
   var PLAN_TEMPLATE = [
-    { id:'A', title:'Día A — Piernas + empuje horizontal', exercises:[
+    { id:'A', title:'Día A — Piernas + empuje horizontal', warmupMin:5, finisherMin:15, exercises:[
       { name:'Sentadilla con barra (o prensa de piernas si empiezas con la técnica)', sets:'3', reps:'10-12', rest:'90s' },
       { name:'Press de banca con barra o mancuernas', sets:'3', reps:'8-10', rest:'90s' },
       { name:'Remo en máquina o polea baja', sets:'3', reps:'10-12', rest:'75s' },
       { name:'Zancadas con mancuernas', sets:'2', reps:'10-12 por pierna', rest:'75s' },
       { name:'Plancha abdominal', sets:'3', reps:'20-30 s', rest:'45s' }
     ]},
-    { id:'B', title:'Día B — Cadera + empuje vertical', exercises:[
+    { id:'B', title:'Día B — Cadera + empuje vertical', warmupMin:5, finisherMin:15, exercises:[
       { name:'Peso muerto rumano con barra o mancuernas', sets:'3', reps:'10-12', rest:'90s' },
       { name:'Press militar con mancuernas', sets:'3', reps:'8-10', rest:'90s' },
       { name:'Jalón al pecho en polea', sets:'3', reps:'10-12', rest:'75s' },
       { name:'Elevación de cadera (hip thrust)', sets:'3', reps:'12-15', rest:'60s' },
       { name:'Elevación de piernas o rueda abdominal', sets:'3', reps:'12-15', rest:'45s' }
     ]},
-    { id:'C', title:'Día C — Variación + accesorios', exercises:[
+    { id:'C', title:'Día C — Variación + accesorios', warmupMin:5, finisherMin:18, exercises:[
       { name:'Prensa de piernas o sentadilla búlgara', sets:'3', reps:'10-12', rest:'90s' },
       { name:'Press inclinado con mancuernas', sets:'3', reps:'10-12', rest:'75s' },
       { name:'Remo con mancuerna a una mano', sets:'3', reps:'10-12 por brazo', rest:'75s' },
@@ -516,7 +518,8 @@
   function typeLabel(t) { return TYPE_LABELS_ES[t] || t; }
 
   function renderPlanSummary(ctx) {
-    var html = '<p>En las últimas 4 semanas has entrenado una media de <strong>' + ctx.sessionsPerWeek + ' sesiones/semana</strong>' +
+    var html = '<p><strong>Fase actual: pérdida de peso.</strong> Cada sesión combina calentamiento cardiovascular + fuerza full body + cardio final, para maximizar el gasto calórico sin perder la fuerza que necesitarás luego para definir.</p>';
+    html += '<p>En las últimas 4 semanas has entrenado una media de <strong>' + ctx.sessionsPerWeek + ' sesiones/semana</strong>' +
       (ctx.cardioMinutesPerWeek ? ' (~' + ctx.cardioMinutesPerWeek + ' min/semana)' : '') +
       (ctx.topTypes.length ? ', principalmente ' + ctx.topTypes.map(typeLabel).join(', ') : '') + '.' +
       (ctx.strengthLogged ? '' : ' No hay entrenamiento de fuerza registrado todavía, así que empezamos desde cero con buena técnica.') + '</p>';
@@ -524,11 +527,11 @@
       html += '<p>Sueño medio (7 días): <strong>' + (ctx.avgSleep7 != null ? ctx.avgSleep7.toFixed(1) + ' h' : 'sin datos') + '</strong> · HRV medio (7 días): <strong>' + (ctx.avgHrv7 != null ? Math.round(ctx.avgHrv7) + ' ms' : 'sin datos') + '</strong>.</p>';
     }
     if (ctx.lowRecovery) {
-      html += '<p>Tu sueño y/o tu HRV están algo bajos respecto a tu línea base, así que este plan arranca en <strong>RPE 6-7</strong> (deja 3-4 repeticiones en reserva) priorizando técnica. Si notas fatiga acumulada, quita la última serie de cada ejercicio sin culpa.</p>';
+      html += '<p>Tu sueño y/o tu HRV están algo bajos respecto a tu línea base, así que este plan arranca en <strong>RPE 6-7</strong> en la fuerza (deja 3-4 repeticiones en reserva) y el cardio final es continuo y suave, priorizando técnica y recuperación. Si notas fatiga acumulada, quita la última serie de cada ejercicio sin culpa.</p>';
     } else {
-      html += '<p>Tu recuperación se ve estable, así que puedes trabajar en <strong>RPE 7-8</strong> (deja 1-2 repeticiones en reserva) desde la primera semana.</p>';
+      html += '<p>Tu recuperación se ve estable, así que puedes trabajar en <strong>RPE 7-8</strong> en la fuerza (deja 1-2 repeticiones en reserva) y el cardio final puede ser en intervalos para quemar más calorías.</p>';
     }
-    html += '<p>Progresión: cuando completes el número superior de repeticiones en las 3 series durante 2 sesiones seguidas, sube el peso un 2,5-5% la siguiente vez.</p>';
+    html += '<p>Progresión de fuerza: cuando completes el número superior de repeticiones en las 3 series durante 2 sesiones seguidas, sube el peso un 2,5-5% la siguiente vez.</p>';
     if (!ctx.hasWeightData || !ctx.hasNutritionData) {
       html += '<p>Para saber si estás perdiendo grasa y ganando músculo necesitas datos que Garmin no registra: ' +
         (!ctx.hasWeightData ? 'pésate 1-2 veces/semana en la pestaña <em>Peso</em>' : '') +
@@ -539,27 +542,33 @@
   }
 
   function renderPlanDays(ctx) {
-    var rpeTag = ctx.lowRecovery ? 'RPE objetivo: 6-7' : 'RPE objetivo: 7-8';
+    var rpeTag = ctx.lowRecovery ? 'RPE fuerza: 6-7' : 'RPE fuerza: 7-8';
+    var cardioFinisherDesc = ctx.lowRecovery
+      ? 'continuo suave (bici, remo, cinta o elíptica), ritmo cómodo — sumar gasto calórico sin añadir fatiga'
+      : 'intervalos 30s fuerte / 30s suave (bici, remo o cinta) — más gasto calórico en menos tiempo';
     var wrap = document.getElementById('planDaysWrap');
     var html = '';
     PLAN_TEMPLATE.forEach(function (day) {
       html += '<div class="card plan-day-card"><h4>' + day.title + '</h4><span class="rpe-tag">' + rpeTag + '</span>' +
+        '<p class="note-muted" style="margin-top:8px;">🔸 Calentamiento: ' + day.warmupMin + ' min de cardio suave (bici, remo o cinta) para activar.</p>' +
         '<table class="exercise-table"><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Descanso</th></tr></thead><tbody>';
       day.exercises.forEach(function (ex) {
         html += '<tr><td>' + ex.name + '</td><td>' + ex.sets + '</td><td>' + ex.reps + '</td><td>' + ex.rest + '</td></tr>';
       });
-      html += '</tbody></table></div>';
+      html += '</tbody></table>' +
+        '<p class="note-muted" style="margin-top:10px; margin-bottom:0;">🔥 Cardio final: ' + day.finisherMin + ' min ' + cardioFinisherDesc + '.</p>' +
+        '<p class="note-muted" style="margin-top:4px;">Duración total aprox.: ' + (day.warmupMin + 35 + day.finisherMin) + '-' + (day.warmupMin + 45 + day.finisherMin) + ' min.</p>' +
+        '</div>';
     });
     wrap.innerHTML = html;
   }
 
   function renderPlanCardioNote(ctx) {
-    var html = 'Actualmente entrenas cardio unas ' + ctx.sessionsPerWeek + ' veces/semana' +
-      (ctx.topTypes.length ? ' (' + ctx.topTypes.map(typeLabel).join(', ') + ')' : '') + '. ' +
-      'Coloca los 3 días de fuerza en días no consecutivos (por ejemplo lunes/miércoles/viernes). ' +
-      'Si ese mismo día quieres hacer también cardio, hazlo después de la fuerza y mantenlo suave (15-20 min) para no comprometer la recuperación ni el objetivo de definición. ' +
-      'Reserva al menos un día a la semana de descanso total o activo (paseo suave).';
-    document.getElementById('planCardioNote').textContent = html;
+    var html = 'Ahora mismo el objetivo es <strong>perder peso</strong>, por eso cada uno de los 3 días ya incluye cardio (calentamiento + final) además de la fuerza — no necesitas añadir cardio extra esos días. ' +
+      'Coloca los 3 días en jornadas no consecutivas (por ejemplo lunes/miércoles/viernes) y reserva al menos un día a la semana de descanso total o activo (paseo suave). ' +
+      'El resto de días puedes seguir con tu cardio habitual (' + (ctx.topTypes.length ? ctx.topTypes.map(typeLabel).join(', ') : 'bici, remo, caminar') + ') si quieres acelerar la pérdida de peso, vigilando que el sueño no baje de 7h. ' +
+      'Cuando lleves varias semanas perdiendo peso de forma constante (revísalo en la pestaña Peso) o te acerques a tu objetivo, pulsa "Refrescar entrenamiento": iremos reduciendo el cardio final y subiendo el volumen de fuerza para pasar a la fase de definición muscular.';
+    document.getElementById('planCardioNote').innerHTML = html;
   }
 
   function renderPlanTab() {
@@ -572,7 +581,7 @@
   document.getElementById('btnRegenPlan').addEventListener('click', async function () {
     var btn = this; btn.disabled = true; btn.textContent = 'Actualizando…';
     await loadAllData();
-    btn.disabled = false; btn.textContent = '↻ Regenerar con mis datos actuales';
+    btn.disabled = false; btn.textContent = '↻ Refrescar entrenamiento con mis datos actuales';
   });
 
   // ---------------- Nutrition ----------------

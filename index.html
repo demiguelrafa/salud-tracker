@@ -142,8 +142,12 @@
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <h3>Estado de sincronización con Garmin</h3>
-      <div id="syncStatusWrap"><div class="empty-state">Todavía no se ha ejecutado ninguna sincronización.</div></div>
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
+        <h3 style="margin:0;">Estado de sincronización con Garmin</h3>
+        <button class="btn secondary small" id="btnSyncNow">⟳ Sincronizar con Garmin ahora</button>
+      </div>
+      <div id="syncNowMsg" class="note-muted" style="margin-top:8px; min-height:14px;"></div>
+      <div id="syncStatusWrap" style="margin-top:10px;"><div class="empty-state">Todavía no se ha ejecutado ninguna sincronización.</div></div>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
@@ -724,6 +728,38 @@
     });
     wrap.innerHTML = html;
   }
+
+  document.getElementById('btnSyncNow').addEventListener('click', async function () {
+    var btn = this;
+    var msg = document.getElementById('syncNowMsg');
+    btn.disabled = true;
+    btn.textContent = 'Lanzando sincronización…';
+    msg.className = 'note-muted';
+    msg.textContent = '';
+    try {
+      var session = await sb.auth.getSession();
+      var token = session.data.session ? session.data.session.access_token : null;
+      var res = await fetch(SUPABASE_URL + '/functions/v1/sync-garmin-now', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
+      });
+      var body = await res.json().catch(function () { return {}; });
+      if (res.ok && body.ok) {
+        msg.textContent = '✓ Sincronización lanzada. Tardará 1-2 minutos en completarse — vuelve a esta pestaña o pulsa "Refrescar entrenamiento" luego para ver los datos nuevos.';
+        setTimeout(function () { loadAllData(); }, 90000);
+      } else {
+        msg.className = 'note-muted';
+        msg.style.color = 'var(--red)';
+        msg.textContent = 'No se pudo lanzar la sincronización: ' + (body.error || ('error ' + res.status)) + '. Comprueba que el secreto GITHUB_PAT esté configurado en la función sync-garmin-now.';
+      }
+    } catch (err) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = 'Error de red al intentar lanzar la sincronización: ' + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⟳ Sincronizar con Garmin ahora';
+    }
+  });
 
   // ---------------- Dashboard stats ----------------
   function computeStreak() {
